@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
-#include <time.h>
 
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
@@ -12,8 +11,8 @@
 #define NK_INCLUDE_DEFAULT_ALLOCATOR
 #define NK_IMPLEMENTATION
 #define NK_GDIP_IMPLEMENTATION
-#include "nuklear.h"
-#include "nuklear_gdip.h"
+#include <nuklear.h>
+#include <nuklear_gdip.h>
 #include "style.c"
 
 #define COL_W 11
@@ -46,6 +45,18 @@ static uint16_t character[COL_H] = {
 
 void ConvertCharToBuffer();
 void ConvertBufferToChar(char* buffer);
+void MovePixelsUp();
+void MovePixelsLeft();
+void MovePixelsRight();
+void MovePixelsDown();
+void FlipPixelsVertical();
+void FlipPixelsHorizontal();
+
+void ReadFromClipboard(char *buffer);
+
+void WriteToClipboard(const char *buffer);
+
+void ReadAndParseClipboard();
 
 /* ===============================================================
  *
@@ -176,20 +187,71 @@ int main(void)
     }
     nk_end(ctx);
 
-    if (nk_begin(ctx, "Value", nk_rect(WINDOW_WIDTH-245, 50, 230, 400),
+    if (nk_begin(ctx, "Value", nk_rect(WINDOW_WIDTH-245, 50, 240, 400),
                  NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE))
     {
-      nk_layout_row_static(ctx, 50, 200, 1);
-      nk_label_wrap(ctx, "Use left-click to set the box and right-click for resetting it!");
-
-      nk_layout_row_static(ctx, 30, 80, 1);
-      nk_label(ctx, "Value:", NK_TEXT_LEFT);
-      if (nk_button_label(ctx, "Calc & Copy")) {
-        ConvertBufferToChar(text_val);
-        text_val_len = strlen(text_val);
+      if (nk_tree_push(ctx, NK_TREE_NODE, "Hint", NK_MINIMIZED)) {
+        nk_layout_row_static(ctx, 50, 190, 1);
+        nk_label_wrap(ctx, "Use left-click to set the box.\r\nUse right-click for resetting it.");
+        nk_tree_pop(ctx);
       }
-      nk_layout_row_static(ctx, 100, 200, 1);
-      nk_edit_string(ctx, NK_EDIT_BOX, text_val, &text_val_len, 256, nk_filter_default);
+
+      if (nk_tree_push(ctx, NK_TREE_NODE, "Edit", NK_MAXIMIZED)) {
+        nk_layout_row_static(ctx, 30, 190, 1);
+        if (nk_button_label(ctx, "Clear")) {
+          memset(selected, 0, sizeof(int) * COL_W * COL_H);
+        }
+
+        nk_layout_row_static(ctx, 30, 93, 2);
+        if (nk_button_label(ctx, "Flip H")) {
+          FlipPixelsHorizontal();
+        }
+        if (nk_button_label(ctx, "Flip V")) {
+          FlipPixelsVertical();
+        }
+
+        nk_layout_row_static(ctx, 30, 60, 3);
+
+        nk_label(ctx, "", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, "Up")) {
+          MovePixelsUp();
+        }
+        nk_label(ctx, "", NK_TEXT_LEFT);
+
+        if (nk_button_label(ctx, "Left")) {
+          MovePixelsLeft();
+        }
+        nk_label(ctx, "", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, "Right")) {
+          MovePixelsRight();
+        }
+
+        nk_label(ctx, "", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, "Down")) {
+          MovePixelsDown();
+        }
+        nk_label(ctx, "", NK_TEXT_LEFT);
+
+        nk_tree_pop(ctx);
+      }
+
+      if (nk_tree_push(ctx, NK_TREE_NODE, "Value", NK_MINIMIZED)) {
+        nk_layout_row_static(ctx, 30, 190, 1);
+        nk_label(ctx, "Actions:", NK_TEXT_LEFT);
+        nk_layout_row_static(ctx, 30, 82, 2);
+        if (nk_button_label(ctx, "Read f. Clipboard")) {
+          ReadAndParseClipboard();
+        }
+        if (nk_button_label(ctx, "Calc & Copy")) {
+          ConvertBufferToChar(text_val);
+          text_val_len = strlen(text_val);
+        }
+        nk_layout_row_static(ctx, 30, 190, 1);
+        nk_label(ctx, "Value:", NK_TEXT_LEFT);
+        nk_layout_row_static(ctx, 100, 190, 1);
+        nk_edit_string(ctx, NK_EDIT_EDITOR, text_val, &text_val_len, 256, nk_filter_default);
+        nk_tree_pop(ctx);
+      }
     }
     nk_end(ctx);
 
@@ -201,6 +263,113 @@ int main(void)
   nk_gdip_shutdown();
   UnregisterClassW(wc.lpszClassName, wc.hInstance);
   return 0;
+}
+
+void ReadAndParseClipboard() {
+  char buffer[256] = {0};
+  ReadFromClipboard(buffer);
+
+  int succeed = 1;
+  int count = 0;
+  const char* ptr = buffer;
+  do
+  {
+    while(ptr && *ptr != 'x') ptr++;
+    ptr++;
+
+    uint16_t val = 0;
+    if (sscanf(ptr, "%x,", &val) == 1)
+    {
+      character[count] = val;
+      count++;
+    }
+    else
+      succeed = 0;
+  } while(succeed && count < COL_H);
+
+  if (count != COL_H) {
+    memset(character, 0, sizeof(uint16_t) * COL_H);
+    // show error
+  }
+  ConvertCharToBuffer();
+}
+
+void WriteToClipboard(const char *buffer) {
+  const size_t len = strlen(buffer) + 1;
+  HGLOBAL hMem =  GlobalAlloc(GMEM_MOVEABLE, len);
+  memcpy(GlobalLock(hMem), buffer, len);
+  GlobalUnlock(hMem);
+  OpenClipboard(0);
+  EmptyClipboard();
+  SetClipboardData(CF_TEXT, hMem);
+  CloseClipboard();
+}
+
+void ReadFromClipboard(char *buffer) {
+  HANDLE h;
+  OpenClipboard(NULL);
+  h = GetClipboardData(CF_TEXT);
+  sprintf(buffer, "%s", (char *)h);
+  CloseClipboard();
+}
+
+void FlipPixelsHorizontal() {
+  for (int j = 0; j < COL_H; j++) {
+    for (int i = 0; i < COL_W / 2; i++) {
+      int temp = selected[(j * COL_W) + i];
+      selected[(j * COL_W) + i] = selected[((j + 1) * COL_W) - i - 1];
+      selected[((j + 1) * COL_W) - i - 1] = temp;
+    }
+  }
+}
+
+void FlipPixelsVertical() {
+  for (int i = 0; i < COL_W; i++) {
+    for (int j = 0; j < COL_H / 2; j++) {
+      int t1 = (j * COL_W) + i;
+      int t2 = ((COL_H - j - 1) * COL_W) + i;
+      int t3 = (COL_H - j);
+      int temp = selected[(j * COL_W) + i];
+      selected[(j * COL_W) + i] = selected[((COL_H - j - 1) * COL_W) + i];
+      selected[((COL_H - j - 1) * COL_W) + i] = temp;
+    }
+  }
+}
+
+void MovePixelsDown() {
+  for(int i=(sizeof(selected)/ sizeof(selected[0])); i >= 0; i--) {
+    if (i > COL_W)
+      selected[i] = selected[i - COL_W];
+    else
+      selected[i] = nk_false;
+  }
+}
+
+void MovePixelsRight() {
+  for (int j = 0; j < COL_H; j++) {
+    for (int i = COL_W - 2; i >= 0; i--) {
+      selected[(j * COL_W) + i + 1] = selected[(j * COL_W) + i];
+    }
+    selected[(j * COL_W)] = 0;
+  }
+}
+
+void MovePixelsLeft() {
+  for (int j = 0; j < COL_H; j++) {
+    for (int i = 0; i < COL_W - 1; i++) {
+      selected[(j * COL_W) + i] = selected[(j * COL_W) + i + 1];
+    }
+    selected[((j + 1) * COL_W) - 1] = 0;
+  }
+}
+
+void MovePixelsUp() {
+  for(int i=0;i < (COL_W * COL_H);i++) {
+    if (i < COL_W * (COL_H-1))
+      selected[i] = selected[i + COL_W];
+    else
+      selected[i] = nk_false;
+  }
 }
 
 void ConvertBufferToChar(char* buffer) {
@@ -226,18 +395,12 @@ void ConvertBufferToChar(char* buffer) {
     ptr += 8;
   }
 
-  const size_t len = strlen(buffer) + 1;
-  HGLOBAL hMem =  GlobalAlloc(GMEM_MOVEABLE, len);
-  memcpy(GlobalLock(hMem), buffer, len);
-  GlobalUnlock(hMem);
-  OpenClipboard(0);
-  EmptyClipboard();
-  SetClipboardData(CF_TEXT, hMem);
-  CloseClipboard();
+  WriteToClipboard(buffer);
 }
 
 void ConvertCharToBuffer() {
   uint16_t i, b, j;
+  memset(selected, 0, sizeof(int) * COL_W * COL_H);
   for (i = 0; i < COL_H; i++)
   {
     b = character[i];
