@@ -17,29 +17,13 @@
 
 #define COL_W 11
 #define COL_H 18
-#define CELL_SIZE 20
+#define CELL_SIZE 15
 #define WINDOW_WIDTH COL_W * CELL_SIZE + (COL_W * 6) + 250
 #define WINDOW_HEIGHT COL_H * CELL_SIZE + (COL_H * 6)
+#define BUFFER_SIZE COL_H * 8 + 1
 
 static int selected[COL_W * COL_H] = {0};
 static uint16_t character[COL_H] = {
-  0x0000,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0C00,
-  0x0000,
-  0x0C00,
-  0x0C00,
-  0x0000,
-  0x0000,
   0x0000,
 };
 
@@ -249,7 +233,7 @@ int main(void)
         nk_layout_row_static(ctx, 30, 190, 1);
         nk_label(ctx, "Value:", NK_TEXT_LEFT);
         nk_layout_row_static(ctx, 100, 190, 1);
-        nk_edit_string(ctx, NK_EDIT_EDITOR, text_val, &text_val_len, 256, nk_filter_default);
+        nk_edit_string(ctx, NK_EDIT_EDITOR, text_val, &text_val_len, BUFFER_SIZE, nk_filter_default);
         nk_tree_pop(ctx);
       }
     }
@@ -266,7 +250,7 @@ int main(void)
 }
 
 void ReadAndParseClipboard() {
-  char buffer[256] = {0};
+  char buffer[BUFFER_SIZE] = {0};
   ReadFromClipboard(buffer);
 
   int succeed = 1;
@@ -374,7 +358,7 @@ void MovePixelsUp() {
 
 void ConvertBufferToChar(char* buffer) {
   uint16_t i, j, ptr = 0;
-  memset(buffer, 0, 256);
+  memset(buffer, 0, BUFFER_SIZE);
 
   for (i = 0; i < COL_H; i++)
   {
