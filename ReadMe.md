@@ -13,6 +13,20 @@ This code is a simple SSD1306 font pixel calculator. I made this to use for my p
 It is under HEAVY development for now, 
 but you can use it for creating/editing characters. 
 
+#### Build Instruction
+
+The project doesn't need any dependencies, and uses `nuklear` for the GUI which is included in the project. At this time, just `Microsoft Windows` is supported.
+You can build the project on windows using the following commands:
+
+``` bash
+mkdir build
+cd build
+cmake .. -G "MinGW Makefiles"
+mingw32-make
+```
+* You should have `cmake` and `mingw` installation dir in your `PATH` environment variable.
+
+
 #### Usage
 
 **Remember! At this time you can edit or create a new character, but you can't import any character from any font file! Importing from font file is planned for future** 
