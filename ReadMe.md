@@ -31,13 +31,7 @@ mingw32-make
 
 **Remember! At this time you can edit or create a new character, but you can't import any character from any font file! Importing from font file is planned for future** 
 
-Keep in mind that if you plan to work on a font with different dimensions, you should edit these three lines in the code:
-
-``` c
-#define COL_W 11
-#define COL_H 18
-#define CELL_SIZE 15
-```
+Keep in mind that if you plan to work on a font with different dimensions, you can change the dimension from `Settings` menu (Located in `MENU`).
 
 You have some fonts in the `fonts.c` file of the library, that every character presented in a line there, like this:
 
@@ -64,7 +58,5 @@ It doesn't support font generation based on true-type fonts yet.
 
 These are the remaining tasks I plan to do in my spare time:
 
-- Character dimension settings in UI
 - Edit multiple characters simultaneously
 - Create chars from true-type fonts
-- UI/UX Improvements
