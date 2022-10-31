@@ -1,5 +1,7 @@
 ## GLCD Font Calculator
 
+#### Description
+
 ![](screenshots/Capture.PNG)
 
 This code is a simple SSD1306 font pixel calculator. I made this to use for my project <a href="https://github.com/the-this-pointer/timer-board-stm32f103" target="_blank">here</a>.
@@ -11,6 +13,10 @@ This code is a simple SSD1306 font pixel calculator. I made this to use for my p
 It is under HEAVY development for now, 
 but you can use it for creating/editing characters. 
 
+#### Usage
+
+**Remember! At this time you can edit or create a new character, but you can't import any character from any font file! Importing from font file is planned for future** 
+
 Keep in mind that if you plan to work on a font with different dimensions, you should edit these three lines in the code:
 
 ``` c
@@ -18,6 +24,27 @@ Keep in mind that if you plan to work on a font with different dimensions, you s
 #define COL_H 18
 #define CELL_SIZE 15
 ```
+
+You have some fonts in the `fonts.c` file of the library, that every character presented in a line there, like this:
+
+``` c
+0x0800, 0x1800, 0x2800, 0x2800, 0x4800, 0x7C00, 0x0800, 0x0800, 0x0000, 0x0000,
+```
+
+###### Editing a character
+Just copy the line and press the `Read f. Clipboard` button (Located in value section on the right sidebar) in the generator, this will parse the character and show that to you.
+
+###### Generating a character
+
+After editing pixels when you are ready to use the character, you should press the `Calc & Copy`, this will show you the generated data and also copy the data to the clipboard ready to use in the library. The generated data is like below:
+
+``` c
+0x0800, 0x1800, 0x2800, 0x2800, 0x4800, 0x7C00, 0x0800, 0x0800, 0x0000, 0x0000,
+```
+This calculator just create the character for you and the rest of code such as declaring font is on yourself.
+
+
+#### Remaining Works
 
 It doesn't support font generation based on true-type fonts yet. 
 
