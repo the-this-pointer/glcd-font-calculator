@@ -17,10 +17,13 @@
 
 #define COL_W 11
 #define COL_H 18
-#define CELL_SIZE 15
-#define WINDOW_WIDTH COL_W * CELL_SIZE + (COL_W * 6) + 250
-#define WINDOW_HEIGHT COL_H * CELL_SIZE + (COL_H * 6)
 #define BUFFER_SIZE COL_H * 8 + 1
+
+static int show_font_settings = nk_false;
+static int show_app_about = nk_false;
+
+uint16_t windowWidth = 510;
+uint16_t windowHeight = 480;
 
 static int selected[COL_W * COL_H] = {0};
 static uint16_t character[COL_H] = {
@@ -35,22 +38,18 @@ void MovePixelsRight();
 void MovePixelsDown();
 void FlipPixelsVertical();
 void FlipPixelsHorizontal();
-
 void ReadFromClipboard(char *buffer);
-
 void WriteToClipboard(const char *buffer);
-
 void ReadAndParseClipboard();
 
-/* ===============================================================
- *
- *                          DEMO
- *
- * ===============================================================*/
 static LRESULT CALLBACK
 WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
   switch (msg) {
+    case WM_SIZE:
+      windowWidth = LOWORD(lparam);
+      windowHeight = HIWORD(lparam);
+      break;
     case WM_DESTROY:
       PostQuitMessage(0);
       return 0;
@@ -66,7 +65,7 @@ int main(void)
   struct nk_context *ctx;
 
   WNDCLASSW wc;
-  RECT rect = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
+  RECT rect = { 0, 0, windowWidth, windowHeight };
   DWORD style = WS_OVERLAPPEDWINDOW;
   DWORD exstyle = WS_EX_APPWINDOW;
   HWND wnd;
@@ -100,7 +99,7 @@ int main(void)
                         NULL, NULL, wc.hInstance, NULL);
 
   /* GUI */
-  ctx = nk_gdip_init(wnd, WINDOW_WIDTH, WINDOW_HEIGHT);
+  ctx = nk_gdip_init(wnd, windowWidth, windowHeight);
   font = nk_gdipfont_create("Arial", 12);
   nk_gdip_set_font(font);
   set_style(ctx, THEME_RED);
@@ -132,15 +131,53 @@ int main(void)
     nk_input_end(ctx);
 
     /* GUI */
-    if (nk_begin(ctx, "Calculator", nk_rect(0, 0, WINDOW_WIDTH-240, WINDOW_HEIGHT), 0x00))
+    if (nk_begin(ctx, "Calculator", nk_rect(0, 0, windowWidth, windowHeight), 0x00))
     {
+      /* menubar */
+      enum menu_states {MENU_DEFAULT, MENU_WINDOWS};
+      static nk_size mprog = 60;
+      static int mslider = 10;
+      static int mcheck = nk_true;
+      nk_menubar_begin(ctx);
+
+      nk_layout_row_begin(ctx, NK_STATIC, 25, 5);
+      nk_layout_row_push(ctx, 45);
+      if (nk_menu_begin_label(ctx, "MENU", NK_TEXT_LEFT, nk_vec2(120, 200)))
+      {
+        static size_t prog = 40;
+        static int slider = 10;
+        static int check = nk_true;
+        nk_layout_row_dynamic(ctx, 25, 1);
+        if (nk_menu_item_label(ctx, "Settings", NK_TEXT_LEFT))
+          show_font_settings = nk_true;
+        if (nk_menu_item_label(ctx, "About", NK_TEXT_LEFT))
+          show_app_about = nk_true;
+
+        nk_menu_end(ctx);
+      }
+      if (nk_menu_begin_label(ctx, "VALUE", NK_TEXT_LEFT, nk_vec2(120, 200)))
+      {
+        nk_layout_row_dynamic(ctx, 25, 1);
+        if (nk_menu_item_label(ctx, "Read f. Clipboard", NK_TEXT_LEFT)) {
+          ReadAndParseClipboard();
+        }
+        if (nk_menu_item_label(ctx, "Calc & Copy", NK_TEXT_LEFT)) {
+          ConvertBufferToChar(text_val);
+          text_val_len = strlen(text_val);
+        }
+
+        nk_menu_end(ctx);
+      }
+      nk_menubar_end(ctx);
+      /* menubar end */
+
       struct nk_command_buffer* out = nk_window_get_canvas(ctx);
       struct nk_rect bounding_rect = nk_window_get_bounds(ctx);
-      uint16_t cell_size = (bounding_rect.h - 22) / COL_H;
-      struct nk_rect rects_bounding_rect = nk_rect(12, 16, cell_size * COL_W, cell_size * COL_H);
+      uint16_t cell_size = (bounding_rect.h - 50) / COL_H;
+      struct nk_rect rects_bounding_rect = nk_rect(230, 44, cell_size * COL_W, cell_size * COL_H);
       for (int i = 0; i < COL_H; ++i) {
         for (int j = 0; j < COL_W; ++j) {
-          nk_fill_rect(out, nk_rect(12 + cell_size * j, 16 + cell_size * i, cell_size, cell_size), 0.0,
+          nk_fill_rect(out, nk_rect(230 + cell_size * j, 44 + cell_size * i, cell_size, cell_size), 0.0,
                        selected[(i * COL_W) + j] == 0? nk_rgba(57, 67, 71, 215) : nk_rgba(195, 55, 75, 255));
         }
       }
@@ -161,19 +198,14 @@ int main(void)
       }
 
       if (clicked_active || rclicked_active) {
-        clicked_pos.x = ctx->input.mouse.pos.x - 12;
-        clicked_pos.y = ctx->input.mouse.pos.y - 16;
+        clicked_pos.x = ctx->input.mouse.pos.x - 230;
+        clicked_pos.y = ctx->input.mouse.pos.y - 44;
         int x = ((float)COL_W * clicked_pos.x) / rects_bounding_rect.w;
         int y = ((float)COL_H * clicked_pos.y) / rects_bounding_rect.h;
 
         selected[y * COL_W + x] = clicked_active? 1: 0;
       }
-    }
-    nk_end(ctx);
 
-    if (nk_begin(ctx, "Value", nk_rect(WINDOW_WIDTH-245, 50, 240, 400),
-                 NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE))
-    {
       if (nk_tree_push(ctx, NK_TREE_NODE, "Hint", NK_MINIMIZED)) {
         nk_layout_row_static(ctx, 50, 190, 1);
         nk_label_wrap(ctx, "Use left-click to set the box.\r\nUse right-click for resetting it.");
@@ -218,24 +250,24 @@ int main(void)
 
         nk_tree_pop(ctx);
       }
+    }
 
-      if (nk_tree_push(ctx, NK_TREE_NODE, "Value", NK_MINIMIZED)) {
-        nk_layout_row_static(ctx, 30, 190, 1);
-        nk_label(ctx, "Actions:", NK_TEXT_LEFT);
-        nk_layout_row_static(ctx, 30, 82, 2);
-        if (nk_button_label(ctx, "Read f. Clipboard")) {
-          ReadAndParseClipboard();
-        }
-        if (nk_button_label(ctx, "Calc & Copy")) {
-          ConvertBufferToChar(text_val);
-          text_val_len = strlen(text_val);
-        }
-        nk_layout_row_static(ctx, 30, 190, 1);
-        nk_label(ctx, "Value:", NK_TEXT_LEFT);
-        nk_layout_row_static(ctx, 100, 190, 1);
-        nk_edit_string(ctx, NK_EDIT_EDITOR, text_val, &text_val_len, BUFFER_SIZE, nk_filter_default);
-        nk_tree_pop(ctx);
-      }
+    if (show_app_about)
+    {
+      /* about popup */
+      static struct nk_rect s;
+      s.x = (windowWidth - 300)/2;
+      s.y = (windowHeight - 120)/2;
+      s.w = 300;
+      s.h = 120;
+      if (nk_popup_begin(ctx, NK_POPUP_STATIC, "About", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
+      {
+        nk_layout_row_dynamic(ctx, 20, 1);
+        nk_label(ctx, "SSD1306 GLCD Font Calculator", NK_TEXT_LEFT);
+        nk_label(ctx, "By Rsomething", NK_TEXT_LEFT);
+        nk_label(ctx, "https://github.com/the-this-pointer",  NK_TEXT_LEFT);
+        nk_popup_end(ctx);
+      } else show_app_about = nk_false;
     }
     nk_end(ctx);
 

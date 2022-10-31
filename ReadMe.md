@@ -46,7 +46,7 @@ You have some fonts in the `fonts.c` file of the library, that every character p
 ```
 
 ###### Editing a character
-Just copy the line and press the `Read f. Clipboard` button (Located in value section on the right sidebar) in the generator, this will parse the character and show that to you.
+Just copy the line and press the `Read f. Clipboard` menu (Located in `VALUE` menu) in the generator, this will parse the character and show that to you.
 
 ###### Generating a character
 
