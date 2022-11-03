@@ -15,17 +15,29 @@ but you can use it for creating/editing characters.
 
 #### Build Instruction
 
-The project doesn't need any dependencies, and uses `nuklear` for the GUI which is included in the project. At this time, just `Microsoft Windows` is supported.
-You can build the project on windows using the following commands:
+The project uses opengl, `glew`, `glfw` as the backend for ui, and uses `nuklear` library which is included in the project. At this time, just `Microsoft Windows` is supported.
+You can build the project on windows using msys2.
+* At this time, I don't remember the libraries I've installed for my msys environment, if you have any problems with build instructions just let me know!
 
+Install these packages first:
+
+``` bash
+pacman -S mingw-w64-x86_64-toolchain
+pacman -S mingw-w64-x86_64-cmake
+
+pacman -S mingw-w64-x86_64-glew
+pacman -S mingw-w64-x86_64-glfw
+```
+
+Then run these commands to build the project:
 ``` bash
 mkdir build
 cd build
-cmake .. -G "MinGW Makefiles"
-mingw32-make
+cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Release
+cmake --build .
 ```
-* You should have `cmake` and `mingw` installation dir in your `PATH` environment variable.
 
+If you have any questions about how cmake works (or you want to use other compilers), you can read this <a href="https://www.msys2.org/docs/cmake/" target="_blank">link</a>.  
 
 #### Usage
 

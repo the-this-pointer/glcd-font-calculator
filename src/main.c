@@ -7,18 +7,28 @@
 
 #include <edit_utils.h>
 
+#include <gl/glew.h>
+#include <glfw/glfw3.h>
+
+#define MAX_VERTEX_BUFFER 512 * 1024
+#define MAX_ELEMENT_BUFFER 128 * 1024
+
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
 #define NK_IMPLEMENTATION
-#define NK_GDIP_IMPLEMENTATION
+#define NK_GLFW_GL3_IMPLEMENTATION
+#define NK_KEYSTATE_BASED_INPUT
 #include <nuklear/nuklear.h>
-#include <nuklear/nuklear_gdip.h>
+#include <nuklear/nuklear_glfw_gl3.h>
 #include "style.c"
 
-uint16_t window_width = 460;
-uint16_t window_height = 480;
+uint16_t window_width = 600;
+uint16_t window_height = 688;
 
 struct AppState {
   uint8_t col_w;
@@ -42,61 +52,59 @@ void parse_clipboard();
 
 void calculator_run(struct nk_context *ctx);
 
-static LRESULT CALLBACK
-WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
-{
-  switch (msg) {
-    case WM_SIZE:
-      window_width = LOWORD(lparam);
-      window_height = HIWORD(lparam);
-      break;
-    case WM_DESTROY:
-      PostQuitMessage(0);
-      return 0;
-  }
-  if (nk_gdip_handle_event(wnd, msg, wparam, lparam))
-    return 0;
-  return DefWindowProcW(wnd, msg, wparam, lparam);
-}
+static void error_callback(int e, const char *d)
+{printf("Error %d: %s\n", e, d);}
 
 int main(void)
 {
-  GdipFont* font;
+  /* Platform */
+  static GLFWwindow *win;
+  int width = 0, height = 0;
   struct nk_context *ctx;
-
-  WNDCLASSW wc;
-  RECT rect = { 0, 0, window_width, window_height };
-  DWORD style = WS_OVERLAPPEDWINDOW;
-  DWORD exstyle = WS_EX_APPWINDOW;
-  HWND wnd;
-  int running = 1;
-  int needs_refresh = 1;
+  struct nk_colorf bg;
 
   HWND hWnd = GetConsoleWindow();
-  ShowWindow( hWnd, SW_MINIMIZE );  //won't hide the window without SW_MINIMIZE
   ShowWindow( hWnd, SW_HIDE );
 
-  /* Win32 */
-  memset(&wc, 0, sizeof(wc));
-  wc.style = CS_DBLCLKS;
-  wc.lpfnWndProc = WindowProc;
-  wc.hInstance = GetModuleHandleW(0);
-  wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-  wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-  wc.lpszClassName = L"CalculatorWindowClass";
-  RegisterClassW(&wc);
+  /* GLFW */
+  glfwSetErrorCallback(error_callback);
+  if (!glfwInit()) {
+    fprintf(stdout, "[GFLW] failed to init!\n");
+    exit(1);
+  }
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#ifdef __APPLE__
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
+  win = glfwCreateWindow(window_width, window_height, "SSD1306 Font Generator", NULL, NULL);
+  glfwMakeContextCurrent(win);
+  glfwGetWindowSize(win, &width, &height);
 
-  AdjustWindowRectEx(&rect, style, FALSE, exstyle);
+  /* OpenGL */
+  glViewport(0, 0, window_width, window_height);
+  glewExperimental = 1;
+  if (glewInit() != GLEW_OK) {
+    fprintf(stderr, "Failed to setup GLEW\n");
+    exit(1);
+  }
 
-  wnd = CreateWindowExW(exstyle, wc.lpszClassName, L"SSD1306 Calculator",
-                        style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
-                        rect.right - rect.left, rect.bottom - rect.top,
-                        NULL, NULL, wc.hInstance, NULL);
+  ctx = nk_glfw3_init(win, NK_GLFW3_INSTALL_CALLBACKS);
+  /* Load Fonts: if none of these are loaded a default font will be used  */
+  /* Load Cursor: if you uncomment cursor loading please hide the cursor */
+  {struct nk_font_atlas *atlas;
+    nk_glfw3_font_stash_begin(&atlas);
+    /*struct nk_font *droid = nk_font_atlas_add_from_file(atlas, "../../../extra_font/DroidSans.ttf", 14, 0);*/
+    /*struct nk_font *roboto = nk_font_atlas_add_from_file(atlas, "../../../extra_font/Roboto-Regular.ttf", 14, 0);*/
+    /*struct nk_font *future = nk_font_atlas_add_from_file(atlas, "../../../extra_font/kenvector_future_thin.ttf", 13, 0);*/
+    /*struct nk_font *clean = nk_font_atlas_add_from_file(atlas, "../../../extra_font/ProggyClean.ttf", 12, 0);*/
+    /*struct nk_font *tiny = nk_font_atlas_add_from_file(atlas, "../../../extra_font/ProggyTiny.ttf", 10, 0);*/
+    /*struct nk_font *cousine = nk_font_atlas_add_from_file(atlas, "../../../extra_font/Cousine-Regular.ttf", 13, 0);*/
+    nk_glfw3_font_stash_end();
+    /*nk_style_load_all_cursors(ctx, atlas->cursors);*/
+    /*nk_style_set_font(ctx, &droid->handle);*/}
 
-  /* GUI */
-  ctx = nk_gdip_init(wnd, window_width, window_height);
-  font = nk_gdipfont_create("Arial", 12);
-  nk_gdip_set_font(font);
   set_style(ctx, THEME_RED);
 
   /* Default Values */
@@ -108,40 +116,32 @@ int main(void)
 
   create_buffers();
 
-  while (running)
+  bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;
+  while (!glfwWindowShouldClose(win))
   {
     /* Input */
-    MSG msg;
-    nk_input_begin(ctx);
-    if (needs_refresh == 0) {
-      if (GetMessageW(&msg, NULL, 0, 0) <= 0)
-        running = 0;
-      else {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-      }
-      needs_refresh = 1;
-    } else needs_refresh = 0;
-    while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-      if (msg.message == WM_QUIT)
-        running = 0;
-      TranslateMessage(&msg);
-      DispatchMessageW(&msg);
-      needs_refresh = 1;
-    }
-    nk_input_end(ctx);
+    glfwPollEvents();
+    nk_glfw3_new_frame();
 
     /* GUI */
     calculator_run(ctx);
 
     /* Draw */
-    nk_gdip_render(NK_ANTI_ALIASING_ON, nk_rgb(30,30,30));
+    glfwGetWindowSize(win, &width, &height);
+    glViewport(0, 0, width, height);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(bg.r, bg.g, bg.b, bg.a);
+    /* IMPORTANT: `nk_glfw_render` modifies some global OpenGL state
+     * with blending, scissor, face culling, depth test and viewport and
+     * defaults everything back into a default state.
+     * Make sure to either a.) save and restore or b.) reset your own state after
+     * rendering the UI. */
+    nk_glfw3_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
+    glfwSwapBuffers(win);
   }
-
   free_buffers();
-  nk_gdipfont_del(font);
-  nk_gdip_shutdown();
-  UnregisterClassW(wc.lpszClassName, wc.hInstance);
+  nk_glfw3_shutdown();
+  glfwTerminate();
   return 0;
 }
 
@@ -191,7 +191,7 @@ void calculator_run(struct nk_context *ctx) {
     struct nk_rect rects_bounding_rect = nk_rect(180, 44, cell_size * appState.col_w, cell_size * appState.col_h);
     for (int i = 0; i < appState.col_h; ++i) {
       for (int j = 0; j < appState.col_w; ++j) {
-        nk_fill_rect(out, nk_rect(180 + cell_size * j, 44 + cell_size * i, cell_size, cell_size), 0.0,
+        nk_fill_rect(out, nk_rect(180 + cell_size * j, 44 + cell_size * i, cell_size, cell_size), 2.0,
                      select_state_buffer[(i * appState.col_w) + j] == 0? nk_rgba(57, 67, 71, 215) : nk_rgba(195, 55, 75, 255));
       }
     }
@@ -225,12 +225,12 @@ void calculator_run(struct nk_context *ctx) {
     }
 
     if (nk_tree_push(ctx, NK_TREE_NODE, "Edit", NK_MAXIMIZED)) {
-      nk_layout_row_static(ctx, 30, 100, 1);
+      nk_layout_row_static(ctx, 30, 130, 1);
       if (nk_button_label(ctx, "Clear")) {
         memset(select_state_buffer, 0, appState.col_w * appState.col_h);
       }
 
-      nk_layout_row_static(ctx, 30, 48, 2);
+      nk_layout_row_static(ctx, 30, 63, 2);
       if (nk_button_label(ctx, "Flip H")) {
         FlipPixelsHorizontal(select_state_buffer, appState.col_w, appState.col_h);
       }
@@ -238,7 +238,7 @@ void calculator_run(struct nk_context *ctx) {
         FlipPixelsVertical(select_state_buffer, appState.col_w, appState.col_h);
       }
 
-      nk_layout_row_static(ctx, 30, 30, 3);
+      nk_layout_row_static(ctx, 30, 42, 3);
 
       nk_label(ctx, "", NK_TEXT_LEFT);
       if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_UP)) {
@@ -286,13 +286,14 @@ void calculator_run(struct nk_context *ctx) {
     /* hint popup */
     static struct nk_rect s;
     s.x = (window_width - 300)/2;
-    s.y = (window_height - 120)/2;
+    s.y = (window_height - 150)/2;
     s.w = 300;
-    s.h = 120;
+    s.h = 150;
     if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Hint", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
     {
-      nk_layout_row_static(ctx, 50, 190, 1);
-      nk_label_wrap(ctx, "Use left-click to set the box.\r\nUse right-click to reset it.");
+      nk_layout_row_static(ctx, 20, 190, 1);
+      nk_label_wrap(ctx, "Use left-click to set the box.");
+      nk_label_wrap(ctx, "Use right-click to reset it.");
 
       nk_popup_end(ctx);
     } else appState.show_hint = nk_false;
@@ -345,6 +346,9 @@ void parse_clipboard() {
   memset(buffer, 0, appState.col_w * appState.col_h + 1);
   read_clipboard(buffer);
   buffer[appState.col_w * appState.col_h] = '\0';
+
+  if (buffer[0] != '0' || buffer[1] != 'x')
+    return;
 
   int succeed = 1;
   int count = 0;
