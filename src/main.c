@@ -5,28 +5,29 @@
 #include <string.h>
 #include <limits.h>
 
+#include <edit_utils.h>
+
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_INCLUDE_DEFAULT_ALLOCATOR
 #define NK_IMPLEMENTATION
 #define NK_GDIP_IMPLEMENTATION
-#include <nuklear.h>
-#include <nuklear_gdip.h>
+#include <nuklear/nuklear.h>
+#include <nuklear/nuklear_gdip.h>
 #include "style.c"
 
 #define MAX_BUFFER_SIZE 2048
 
-static int show_font_settings = nk_false;
-static int show_app_about = nk_false;
-static int show_hint = nk_false;
-
-uint16_t windowWidth = 460;
-uint16_t windowHeight = 480;
+uint16_t window_width = 460;
+uint16_t window_height = 480;
 
 struct AppState {
-  uint8_t colW;
-  uint8_t colH;
+  uint8_t col_w;
+  uint8_t col_h;
+  int show_font_settings;
+  int show_app_about;
+  int show_hint;
 } appState;
 
 char* selectedData = NULL;
@@ -36,12 +37,6 @@ void DeleteData();
 void CreateData();
 void ConvertCharToBuffer();
 void ConvertBufferToCharAndCopy();
-void MovePixelsUp();
-void MovePixelsLeft();
-void MovePixelsRight();
-void MovePixelsDown();
-void FlipPixelsVertical();
-void FlipPixelsHorizontal();
 void ReadFromClipboard(char *buffer);
 void WriteToClipboard(const char *buffer);
 void ReadAndParseClipboard();
@@ -51,8 +46,8 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
   switch (msg) {
     case WM_SIZE:
-      windowWidth = LOWORD(lparam);
-      windowHeight = HIWORD(lparam);
+      window_width = LOWORD(lparam);
+      window_height = HIWORD(lparam);
       break;
     case WM_DESTROY:
       PostQuitMessage(0);
@@ -69,7 +64,7 @@ int main(void)
   struct nk_context *ctx;
 
   WNDCLASSW wc;
-  RECT rect = { 0, 0, windowWidth, windowHeight };
+  RECT rect = { 0, 0, window_width, window_height };
   DWORD style = WS_OVERLAPPEDWINDOW;
   DWORD exstyle = WS_EX_APPWINDOW;
   HWND wnd;
@@ -101,14 +96,18 @@ int main(void)
                         NULL, NULL, wc.hInstance, NULL);
 
   /* GUI */
-  ctx = nk_gdip_init(wnd, windowWidth, windowHeight);
+  ctx = nk_gdip_init(wnd, window_width, window_height);
   font = nk_gdipfont_create("Arial", 12);
   nk_gdip_set_font(font);
   set_style(ctx, THEME_RED);
 
   /* Default Values */
-  appState.colW = 11;
-  appState.colH = 18;
+  appState.col_w = 11;
+  appState.col_h = 18;
+  appState.show_font_settings = nk_false;
+  appState.show_app_about = nk_false;
+  appState.show_hint = nk_false;
+
   CreateData();
 
   while (running)
@@ -135,7 +134,7 @@ int main(void)
     nk_input_end(ctx);
 
     /* GUI */
-    if (nk_begin(ctx, "Calculator", nk_rect(0, 0, windowWidth, windowHeight), 0x00))
+    if (nk_begin(ctx, "Calculator", nk_rect(0, 0, window_width, window_height), 0x00))
     {
       /* menubar */
       nk_menubar_begin(ctx);
@@ -146,11 +145,11 @@ int main(void)
       {
         nk_layout_row_dynamic(ctx, 25, 1);
         if (nk_menu_item_label(ctx, "Settings", NK_TEXT_LEFT))
-          show_font_settings = nk_true;
+          appState.show_font_settings = nk_true;
         if (nk_menu_item_label(ctx, "Hint", NK_TEXT_LEFT))
-          show_hint = nk_true;
+          appState.show_hint = nk_true;
         if (nk_menu_item_label(ctx, "About", NK_TEXT_LEFT))
-          show_app_about = nk_true;
+          appState.show_app_about = nk_true;
 
         nk_menu_end(ctx);
       }
@@ -172,12 +171,12 @@ int main(void)
 
       struct nk_command_buffer* out = nk_window_get_canvas(ctx);
       struct nk_rect bounding_rect = nk_window_get_bounds(ctx);
-      uint16_t cell_size = min((windowHeight - 50) / appState.colH, (windowWidth - 190) / appState.colW);
-      struct nk_rect rects_bounding_rect = nk_rect(180, 44, cell_size * appState.colW, cell_size * appState.colH);
-      for (int i = 0; i < appState.colH; ++i) {
-        for (int j = 0; j < appState.colW; ++j) {
+      uint16_t cell_size = min((window_height - 50) / appState.col_h, (window_width - 190) / appState.col_w);
+      struct nk_rect rects_bounding_rect = nk_rect(180, 44, cell_size * appState.col_w, cell_size * appState.col_h);
+      for (int i = 0; i < appState.col_h; ++i) {
+        for (int j = 0; j < appState.col_w; ++j) {
           nk_fill_rect(out, nk_rect(180 + cell_size * j, 44 + cell_size * i, cell_size, cell_size), 0.0,
-                       selectedData[(i * appState.colW) + j] == 0? nk_rgba(57, 67, 71, 215) : nk_rgba(195, 55, 75, 255));
+                       selectedData[(i * appState.col_w) + j] == 0? nk_rgba(57, 67, 71, 215) : nk_rgba(195, 55, 75, 255));
         }
       }
 
@@ -189,7 +188,7 @@ int main(void)
                                                     rects_bounding_rect,nk_true)){
         rclicked_active = 1;
       }
-      if (show_font_settings || show_hint || show_app_about) {
+      if (appState.show_font_settings || appState.show_hint || appState.show_app_about) {
         clicked_active = 0;
         rclicked_active = 0;
       }
@@ -203,45 +202,45 @@ int main(void)
       if (clicked_active || rclicked_active) {
         clicked_pos.x = ctx->input.mouse.pos.x - 180;
         clicked_pos.y = ctx->input.mouse.pos.y - 44;
-        int x = ((float)appState.colW * clicked_pos.x) / rects_bounding_rect.w;
-        int y = ((float)appState.colH * clicked_pos.y) / rects_bounding_rect.h;
+        int x = ((float)appState.col_w * clicked_pos.x) / rects_bounding_rect.w;
+        int y = ((float)appState.col_h * clicked_pos.y) / rects_bounding_rect.h;
 
-        selectedData[y * appState.colW + x] = clicked_active? 1: 0;
+        selectedData[y * appState.col_w + x] = clicked_active? 1: 0;
       }
 
       if (nk_tree_push(ctx, NK_TREE_NODE, "Edit", NK_MAXIMIZED)) {
         nk_layout_row_static(ctx, 30, 100, 1);
         if (nk_button_label(ctx, "Clear")) {
-          memset(selectedData, 0, appState.colW * appState.colH);
+          memset(selectedData, 0, appState.col_w * appState.col_h);
         }
 
         nk_layout_row_static(ctx, 30, 48, 2);
         if (nk_button_label(ctx, "Flip H")) {
-          FlipPixelsHorizontal();
+          FlipPixelsHorizontal(selectedData, appState.col_w, appState.col_h);
         }
         if (nk_button_label(ctx, "Flip V")) {
-          FlipPixelsVertical();
+          FlipPixelsVertical(selectedData, appState.col_w, appState.col_h);
         }
 
         nk_layout_row_static(ctx, 30, 30, 3);
 
         nk_label(ctx, "", NK_TEXT_LEFT);
         if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_UP)) {
-          MovePixelsUp();
+          MovePixelsUp(selectedData, appState.col_w, appState.col_h);
         }
         nk_label(ctx, "", NK_TEXT_LEFT);
 
         if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_LEFT)) {
-          MovePixelsLeft();
+          MovePixelsLeft(selectedData, appState.col_w, appState.col_h);
         }
         nk_label(ctx, "", NK_TEXT_LEFT);
         if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_RIGHT)) {
-          MovePixelsRight();
+          MovePixelsRight(selectedData, appState.col_w, appState.col_h);
         }
 
         nk_label(ctx, "", NK_TEXT_LEFT);
         if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_DOWN)) {
-          MovePixelsDown();
+          MovePixelsDown(selectedData, appState.col_w, appState.col_h);
         }
         nk_label(ctx, "", NK_TEXT_LEFT);
 
@@ -249,12 +248,12 @@ int main(void)
       }
     }
 
-    if (show_app_about)
+    if (appState.show_app_about)
     {
       /* about popup */
       static struct nk_rect s;
-      s.x = (windowWidth - 300)/2;
-      s.y = (windowHeight - 120)/2;
+      s.x = (window_width - 300)/2;
+      s.y = (window_height - 120)/2;
       s.w = 300;
       s.h = 120;
       if (nk_popup_begin(ctx, NK_POPUP_STATIC, "About", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
@@ -264,14 +263,14 @@ int main(void)
         nk_label(ctx, "By Rsomething", NK_TEXT_LEFT);
         nk_label(ctx, "https://github.com/the-this-pointer",  NK_TEXT_LEFT);
         nk_popup_end(ctx);
-      } else show_app_about = nk_false;
+      } else appState.show_app_about = nk_false;
     }
-    if (show_hint)
+    if (appState.show_hint)
     {
       /* hint popup */
       static struct nk_rect s;
-      s.x = (windowWidth - 300)/2;
-      s.y = (windowHeight - 120)/2;
+      s.x = (window_width - 300)/2;
+      s.y = (window_height - 120)/2;
       s.w = 300;
       s.h = 120;
       if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Hint", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
@@ -280,17 +279,17 @@ int main(void)
         nk_label_wrap(ctx, "Use left-click to set the box.\r\nUse right-click to reset it.");
 
         nk_popup_end(ctx);
-      } else show_hint = nk_false;
+      } else appState.show_hint = nk_false;
     }
 
-    if (show_font_settings)
+    if (appState.show_font_settings)
     {
       /* about popup */
       static struct nk_rect s;
-      s.x = (windowWidth - 300)/2;
-      s.y = (windowHeight - 250)/2;
+      s.x = (window_width - 300)/2;
+      s.y = (window_height - 270)/2;
       s.w = 300;
-      s.h = 250;
+      s.h = 270;
       if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Settings", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
       {
         static char text[2][8];
@@ -301,20 +300,25 @@ int main(void)
         nk_edit_string(ctx, NK_EDIT_SIMPLE, text[0], &text_len[0], 8, nk_filter_decimal);
         nk_label(ctx, "Vertical Cols:", NK_TEXT_LEFT);
         nk_edit_string(ctx, NK_EDIT_SIMPLE, text[1], &text_len[1], 8, nk_filter_decimal);
+
         if (nk_button_label(ctx, "Change!")) {
           text[0][text_len[0]] = '\0';
           text[1][text_len[1]] = '\0';
 
-          appState.colW = atol(text[0]);
-          appState.colH = atol(text[1]);
-          CreateData();
+          uint8_t col_w = atol(text[0]);
+          if (col_w <= 16) {
+            appState.col_w = col_w;
+            appState.col_h = atol(text[1]);
+            CreateData();
+          }
         }
 
         nk_layout_row_dynamic(ctx, 20, 1);
+        nk_label_colored(ctx, "Caution! Maximum value for h.cols is 16!", NK_TEXT_LEFT, nk_rgb(255,255,0));
         nk_label_colored(ctx, "Caution! Changing this will reset your work!", NK_TEXT_LEFT, nk_rgb(255,255,0));
-        
+
         nk_popup_end(ctx);
-      } else show_font_settings = nk_false;
+      } else appState.show_font_settings = nk_false;
     }
 
     nk_end(ctx);
@@ -353,11 +357,11 @@ void ReadAndParseClipboard() {
     }
     else
       succeed = 0;
-  } while(succeed && count < appState.colH);
+  } while(succeed && count < appState.col_h);
 
-  if (count != appState.colH) {
-    memset(selectedData, 0, appState.colW * appState.colH);
-    memset(characterData, 0, sizeof(uint16_t) * appState.colH);
+  if (count != appState.col_h) {
+    memset(selectedData, 0, appState.col_w * appState.col_h);
+    memset(characterData, 0, sizeof(uint16_t) * appState.col_h);
     // show error
     return;
   }
@@ -383,76 +387,17 @@ void ReadFromClipboard(char *buffer) {
   CloseClipboard();
 }
 
-void FlipPixelsHorizontal() {
-  for (int j = 0; j < appState.colH; j++) {
-    for (int i = 0; i < appState.colW / 2; i++) {
-      int temp = selectedData[(j * appState.colW) + i];
-      selectedData[(j * appState.colW) + i] = selectedData[((j + 1) * appState.colW) - i - 1];
-      selectedData[((j + 1) * appState.colW) - i - 1] = temp;
-    }
-  }
-}
-
-void FlipPixelsVertical() {
-  for (int i = 0; i < appState.colW; i++) {
-    for (int j = 0; j < appState.colH / 2; j++) {
-      int t1 = (j * appState.colW) + i;
-      int t2 = ((appState.colH - j - 1) * appState.colW) + i;
-      int t3 = (appState.colH - j);
-      int temp = selectedData[(j * appState.colW) + i];
-      selectedData[(j * appState.colW) + i] = selectedData[((appState.colH - j - 1) * appState.colW) + i];
-      selectedData[((appState.colH - j - 1) * appState.colW) + i] = temp;
-    }
-  }
-}
-
-void MovePixelsDown() {
-  for(int i=appState.colW * appState.colH; i >= 0; i--) {
-    if (i > appState.colW)
-      selectedData[i] = selectedData[i - appState.colW];
-    else
-      selectedData[i] = nk_false;
-  }
-}
-
-void MovePixelsRight() {
-  for (int j = 0; j < appState.colH; j++) {
-    for (int i = appState.colW - 2; i >= 0; i--) {
-      selectedData[(j * appState.colW) + i + 1] = selectedData[(j * appState.colW) + i];
-    }
-    selectedData[(j * appState.colW)] = 0;
-  }
-}
-
-void MovePixelsLeft() {
-  for (int j = 0; j < appState.colH; j++) {
-    for (int i = 0; i < appState.colW - 1; i++) {
-      selectedData[(j * appState.colW) + i] = selectedData[(j * appState.colW) + i + 1];
-    }
-    selectedData[((j + 1) * appState.colW) - 1] = 0;
-  }
-}
-
-void MovePixelsUp() {
-  for(int i=0;i < (appState.colW * appState.colH);i++) {
-    if (i < appState.colW * (appState.colH-1))
-      selectedData[i] = selectedData[i + appState.colW];
-    else
-      selectedData[i] = nk_false;
-  }
-}
-
 void ConvertBufferToCharAndCopy() {
   uint16_t i, j, ptr = 0;
   char buffer[MAX_BUFFER_SIZE] = {0};
 
-  for (i = 0; i < appState.colH; i++)
+  for (i = 0; i < appState.col_h; i++)
   {
     characterData[i] = 0;
-    for (j = 0; j < appState.colW; j++)
+    for (j = 0; j < appState.col_w; j++)
     {
       int bit = 15 - j;
-      if (selectedData[j + (i * appState.colW)])
+      if (selectedData[j + (i * appState.col_w)])
       {
         characterData[i] |= ((uint16_t)1 << bit);
       }
@@ -470,19 +415,19 @@ void ConvertBufferToCharAndCopy() {
 
 void ConvertCharToBuffer() {
   uint16_t i, b, j;
-  memset(selectedData, 0, appState.colW * appState.colH);
-  for (i = 0; i < appState.colH; i++)
+  memset(selectedData, 0, appState.col_w * appState.col_h);
+  for (i = 0; i < appState.col_h; i++)
   {
     b = characterData[i];
-    for (j = 0; j < appState.colW; j++)
+    for (j = 0; j < appState.col_w; j++)
     {
       if ((b << j) & 0x8000)
       {
-        selectedData[j + (i * appState.colW)] |= 1 << (i % 8);
+        selectedData[j + (i * appState.col_w)] |= 1 << (i % 8);
       }
       else
       {
-        selectedData[j + (i * appState.colW)] &= ~(1 << (i % 8));
+        selectedData[j + (i * appState.col_w)] &= ~(1 << (i % 8));
       }
     }
   }
@@ -498,9 +443,9 @@ void DeleteData() {
 void CreateData() {
   DeleteData();
 
-  selectedData = malloc(appState.colW * appState.colH);
-  memset(selectedData, 0, appState.colW * appState.colH);
+  selectedData = malloc(appState.col_w * appState.col_h);
+  memset(selectedData, 0, appState.col_w * appState.col_h);
 
-  characterData = malloc(sizeof(uint16_t) * appState.colH);
-  memset(characterData, 0, sizeof(uint16_t) * appState.colH);
+  characterData = malloc(sizeof(uint16_t) * appState.col_h);
+  memset(characterData, 0, sizeof(uint16_t) * appState.col_h);
 }
