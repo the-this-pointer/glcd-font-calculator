@@ -17,7 +17,7 @@
 #include <nuklear/nuklear_gdip.h>
 #include "style.c"
 
-#define MAX_BUFFER_SIZE 2048
+//#define MAX_BUFFER_SIZE 2048
 
 uint16_t window_width = 460;
 uint16_t window_height = 480;
@@ -335,29 +335,31 @@ int main(void)
 }
 
 void ReadAndParseClipboard() {
-  char buffer[MAX_BUFFER_SIZE] = {0};
+  char* buffer = malloc(appState.col_w * appState.col_h + 1);
+  memset(buffer, 0, appState.col_w * appState.col_h + 1);
   ReadFromClipboard(buffer);
-  buffer[MAX_BUFFER_SIZE-1] = '\0';
+  buffer[appState.col_w * appState.col_h] = '\0';
 
   int succeed = 1;
   int count = 0;
   const char* ptr = buffer;
   do
   {
-    while(ptr && ptr - buffer < MAX_BUFFER_SIZE && *ptr != 'x') ptr++;
+    while(ptr && *ptr != 'x') ptr++;
     if (!ptr)
       break;
     ptr++;
 
-    uint16_t val = 0;
+    uint32_t val = 0;
     if (sscanf(ptr, "%x,", &val) == 1)
     {
-      characterData[count] = val;
+      characterData[count] = val & 0xFFFF;
       count++;
     }
     else
       succeed = 0;
   } while(succeed && count < appState.col_h);
+  free(buffer);
 
   if (count != appState.col_h) {
     memset(selectedData, 0, appState.col_w * appState.col_h);
@@ -389,7 +391,8 @@ void ReadFromClipboard(char *buffer) {
 
 void ConvertBufferToCharAndCopy() {
   uint16_t i, j, ptr = 0;
-  char buffer[MAX_BUFFER_SIZE] = {0};
+  char* buffer = malloc(appState.col_w * appState.col_h + 1);
+  memset(buffer, 0, appState.col_w * appState.col_h + 1);
 
   for (i = 0; i < appState.col_h; i++)
   {
@@ -411,6 +414,7 @@ void ConvertBufferToCharAndCopy() {
   }
 
   WriteToClipboard(buffer);
+  free(buffer);
 }
 
 void ConvertCharToBuffer() {
