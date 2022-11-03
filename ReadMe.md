@@ -41,7 +41,7 @@ If you have any questions about how cmake works (or you want to use other compil
 
 #### Usage
 
-**Remember! At this time you can edit or create a new character, but you can't import any character from any font file! Importing from font file is planned for future** 
+**Remember! At this time you can edit or create a new character, also you can import an ascii character from true-type fonts! But converting a font to the array of characters still not implemented.** 
 
 Keep in mind that if you plan to work on a font with different dimensions, you can change the dimension from `Settings` menu (Located in `MENU`).
 
@@ -71,4 +71,4 @@ It doesn't support font generation based on true-type fonts yet.
 These are the remaining tasks I plan to do in my spare time:
 
 - Edit multiple characters simultaneously
-- Create chars from true-type fonts
+- Generate font characters to header file
