@@ -437,6 +437,8 @@ void calculator_run(struct nk_context *ctx) {
         if (text_len > 0)
           load_font_glyph(text[0], appState.pixel_buffer, appState.col_w, appState.col_h);
       }
+      nk_layout_row_dynamic(ctx, 20, 1);
+      nk_label_colored(ctx, "Caution! Enter the character, not the ascii code!", NK_TEXT_LEFT, nk_rgb(255,255,0));
 
       nk_popup_end(ctx);
     } else {
@@ -488,6 +490,7 @@ void calculator_run(struct nk_context *ctx) {
           h_cols <= 16)
           generate_font_glyphs(text[0], from_char, to_char, h_cols, v_cols);
       }
+      nk_layout_row_dynamic(ctx, 20, 1);
       nk_label_colored(ctx, "Caution! From Char is 32 for now!", NK_TEXT_LEFT, nk_rgb(255,255,0));
       nk_label_colored(ctx, "Caution! Maximum value for from and to is 256!", NK_TEXT_LEFT, nk_rgb(255,255,0));
       nk_label_colored(ctx, "Caution! Maximum value for h.cols is 16!", NK_TEXT_LEFT, nk_rgb(255,255,0));
@@ -540,12 +543,12 @@ void load_font_glyph(char chr, uint8_t* pixel_buffer, uint8_t w, uint8_t h) {
   memset(pixel_buffer, 0, w * h);
 
   /* calculate font scaling */
-  float scale = stbtt_ScaleForPixelHeight(appState.font_info, h);
+  float scale = stbtt_ScaleForPixelHeight(appState.font_info, h-1);
 
   int ascent, descent, lineGap;
   stbtt_GetFontVMetrics(appState.font_info, &ascent, &descent, &lineGap);
 
-  ascent = roundf(ascent * scale);
+  int baseline = roundf(ascent * scale);
   descent = roundf(descent * scale);
 
   /* how wide is this character */
@@ -559,7 +562,7 @@ void load_font_glyph(char chr, uint8_t* pixel_buffer, uint8_t w, uint8_t h) {
   stbtt_GetCodepointBitmapBox(appState.font_info, chr, scale, scale, &c_x1, &c_y1, &c_x2, &c_y2);
 
   /* compute y (different characters have different heights) */
-  int y = ascent + c_y1;
+  int y = baseline + c_y1;
 
   /* render character (stride and offset is important here) */
   int byteOffset = roundf(lsb * scale) + (y * w);
