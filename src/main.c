@@ -43,32 +43,34 @@ struct AppState {
   uint8_t show_font_settings;
   uint8_t show_app_about;
   uint8_t show_hint;
+  uint8_t show_import_font;
+  uint8_t show_generate_font;
 
   uint8_t* font_buffer;
   uint64_t font_size;
   stbtt_fontinfo* font_info;
 
-  uint8_t* select_state_buffer;
+  uint8_t* pixel_buffer;
   uint16_t* char_buffer;
 } appState;
 
 void free_font_buffer();
 void free_buffers();
 void create_buffers();
-void load_char_buffer();
-void create_char_buffer();
+void load_char_buffer_to_pixels();
+void char_buffer_to_clipboard();
 
 void read_clipboard(char *buffer);
 void write_clipboard(const char *buffer);
 void parse_clipboard();
-
 void calculator_run(struct nk_context *ctx);
-
 void init_app_state(struct AppState *state);
-
 void load_font_file(const char *file);
+void load_font_glyph(char chr, uint8_t* pixel_buffer, uint8_t w, uint8_t h);
+void generate_font_glyphs(const char *font_name, uint8_t from_char, uint8_t to_char, uint8_t w, uint8_t h);
+void calc_char_buffer_from_pixels(uint16_t *char_buffer, const uint8_t *pixel_buffer, uint8_t w, uint8_t h);
 
-void load_font_glyph(char i);
+void char_buffer_string(char *buffer, const uint16_t *char_buffer, uint8_t w, uint8_t h);
 
 static void error_callback(int e, const char *d)
 {printf("Error %d: %s\n", e, d);}
@@ -159,8 +161,10 @@ void init_app_state(struct AppState *state) {
   appState.show_font_settings = nk_false;
   appState.show_app_about = nk_false;
   appState.show_hint = nk_false;
+  appState.show_import_font = nk_false;
+  appState.show_generate_font = nk_false;
 
-  appState.select_state_buffer = NULL;
+  appState.pixel_buffer = NULL;
   appState.char_buffer = NULL;
 
   appState.font_info = NULL;
@@ -185,7 +189,7 @@ void calculator_run(struct nk_context *ctx) {
     if (nk_menu_begin_label(ctx, "MENU", NK_TEXT_LEFT, nk_vec2(120, 200)))
     {
       nk_layout_row_dynamic(ctx, 25, 1);
-      if (nk_menu_item_label(ctx, "Load Font", NK_TEXT_LEFT)) {
+      if (nk_menu_item_label(ctx, "Generate Font", NK_TEXT_LEFT)) {
         // common dialog box structure, setting all fields to 0 is important
         OPENFILENAME ofn = {0};
         TCHAR szFile[260]={0};
@@ -204,6 +208,31 @@ void calculator_run(struct nk_context *ctx) {
         if(GetOpenFileName(&ofn) == TRUE)
         {
           load_font_file(ofn.lpstrFile);
+          appState.show_import_font = nk_false;
+          appState.show_generate_font = nk_true;
+        }
+      }
+      if (nk_menu_item_label(ctx, "Import From Font", NK_TEXT_LEFT)) {
+        // common dialog box structure, setting all fields to 0 is important
+        OPENFILENAME ofn = {0};
+        TCHAR szFile[260]={0};
+        // Initialize remaining fields of OPENFILENAME structure
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = winHandle;
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = sizeof(szFile);
+        ofn.lpstrFilter = "TrueType Fonts\0*.ttf\0";
+        ofn.nFilterIndex = 1;
+        ofn.lpstrFileTitle = NULL;
+        ofn.nMaxFileTitle = 0;
+        ofn.lpstrInitialDir = NULL;
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+        if(GetOpenFileName(&ofn) == TRUE)
+        {
+          load_font_file(ofn.lpstrFile);
+          appState.show_import_font = nk_true;
+          appState.show_generate_font = nk_false;
         }
       }
       if (nk_menu_item_label(ctx, "Settings", NK_TEXT_LEFT))
@@ -222,7 +251,7 @@ void calculator_run(struct nk_context *ctx) {
         parse_clipboard();
       }
       if (nk_menu_item_label(ctx, "Calc & Copy", NK_TEXT_LEFT)) {
-        create_char_buffer();
+        char_buffer_to_clipboard();
       }
 
       nk_menu_end(ctx);
@@ -238,7 +267,7 @@ void calculator_run(struct nk_context *ctx) {
     for (int i = 0; i < appState.col_h; ++i) {
       for (int j = 0; j < appState.col_w; ++j) {
         nk_fill_rect(out, nk_rect(180 + cell_size * j, 44 + cell_size * i, cell_size, cell_size), 2.0,
-                     appState.select_state_buffer[(i * appState.col_w) + j] == 0? nk_rgba(57, 67, 71, 215) : nk_rgba(195, 55, 75, 255));
+                     appState.pixel_buffer[(i * appState.col_w) + j] == 0 ? nk_rgba(57, 67, 71, 215) : nk_rgba(195, 55, 75, 255));
       }
     }
 
@@ -251,7 +280,7 @@ void calculator_run(struct nk_context *ctx) {
       rclicked_active = 1;
     }
     if (appState.show_font_settings || appState.show_hint ||
-        appState.show_app_about || appState.font_size) {
+        appState.show_app_about || appState.show_import_font || appState.show_generate_font) {
       clicked_active = 0;
       rclicked_active = 0;
     }
@@ -268,42 +297,42 @@ void calculator_run(struct nk_context *ctx) {
       int x = ((float)appState.col_w * clicked_pos.x) / rects_bounding_rect.w;
       int y = ((float)appState.col_h * clicked_pos.y) / rects_bounding_rect.h;
 
-      appState.select_state_buffer[y * appState.col_w + x] = clicked_active? 1: 0;
+      appState.pixel_buffer[y * appState.col_w + x] = clicked_active ? 1 : 0;
     }
 
     if (nk_tree_push(ctx, NK_TREE_NODE, "Edit", NK_MAXIMIZED)) {
       nk_layout_row_static(ctx, 30, 130, 1);
       if (nk_button_label(ctx, "Clear")) {
-        memset(appState.select_state_buffer, 0, appState.col_w * appState.col_h);
+        memset(appState.pixel_buffer, 0, appState.col_w * appState.col_h);
       }
 
       nk_layout_row_static(ctx, 30, 63, 2);
       if (nk_button_label(ctx, "Flip H")) {
-        FlipPixelsHorizontal(appState.select_state_buffer, appState.col_w, appState.col_h);
+        FlipPixelsHorizontal(appState.pixel_buffer, appState.col_w, appState.col_h);
       }
       if (nk_button_label(ctx, "Flip V")) {
-        FlipPixelsVertical(appState.select_state_buffer, appState.col_w, appState.col_h);
+        FlipPixelsVertical(appState.pixel_buffer, appState.col_w, appState.col_h);
       }
 
       nk_layout_row_static(ctx, 30, 42, 3);
 
       nk_label(ctx, "", NK_TEXT_LEFT);
       if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_UP)) {
-        MovePixelsUp(appState.select_state_buffer, appState.col_w, appState.col_h);
+        MovePixelsUp(appState.pixel_buffer, appState.col_w, appState.col_h);
       }
       nk_label(ctx, "", NK_TEXT_LEFT);
 
       if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_LEFT)) {
-        MovePixelsLeft(appState.select_state_buffer, appState.col_w, appState.col_h);
+        MovePixelsLeft(appState.pixel_buffer, appState.col_w, appState.col_h);
       }
       nk_label(ctx, "", NK_TEXT_LEFT);
       if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_RIGHT)) {
-        MovePixelsRight(appState.select_state_buffer, appState.col_w, appState.col_h);
+        MovePixelsRight(appState.pixel_buffer, appState.col_w, appState.col_h);
       }
 
       nk_label(ctx, "", NK_TEXT_LEFT);
       if (nk_button_symbol(ctx, NK_SYMBOL_TRIANGLE_DOWN)) {
-        MovePixelsDown(appState.select_state_buffer, appState.col_w, appState.col_h);
+        MovePixelsDown(appState.pixel_buffer, appState.col_w, appState.col_h);
       }
       nk_label(ctx, "", NK_TEXT_LEFT);
 
@@ -386,7 +415,7 @@ void calculator_run(struct nk_context *ctx) {
     } else appState.show_font_settings = nk_false;
   }
 
-  if (appState.font_size > 0)
+  if (appState.show_import_font)
   {
     /* about popup */
     static struct nk_rect s;
@@ -394,7 +423,7 @@ void calculator_run(struct nk_context *ctx) {
     s.y = (window_height - 270)/2;
     s.w = 300;
     s.h = 270;
-    if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Settings", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
+    if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Import From Font", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
     {
       static char text[3];
       static int text_len;
@@ -406,8 +435,62 @@ void calculator_run(struct nk_context *ctx) {
       if (nk_button_label(ctx, "Load")) {
         text[text_len] = '\0';
         if (text_len > 0)
-          load_font_glyph(text[0]);
+          load_font_glyph(text[0], appState.pixel_buffer, appState.col_w, appState.col_h);
       }
+
+      nk_popup_end(ctx);
+    } else {
+      free_font_buffer();
+    }
+  }
+
+  if (appState.show_generate_font)
+  {
+    /* about popup */
+    static struct nk_rect s;
+    s.x = (window_width - 300)/2;
+    s.y = (window_height - 270)/2;
+    s.w = 300;
+    s.h = 270;
+    if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Generate Font", NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE, s))
+    {
+      static char text[5][32];
+      static int text_len[5];
+
+      nk_layout_row_dynamic(ctx, 30, 1);
+      nk_label(ctx, "Font Name:", NK_TEXT_LEFT);
+      nk_edit_string(ctx, NK_EDIT_SIMPLE, text[0], &text_len[0], 32, nk_filter_ascii);
+      /*nk_label(ctx, "From Char:", NK_TEXT_LEFT);
+      nk_edit_string(ctx, NK_EDIT_SIMPLE, text[1], &text_len[1], 4, nk_filter_decimal);*/
+      nk_label(ctx, "To Char:", NK_TEXT_LEFT);
+      nk_edit_string(ctx, NK_EDIT_SIMPLE, text[2], &text_len[2], 4, nk_filter_decimal);
+      nk_label(ctx, "Horizontal Cols:", NK_TEXT_LEFT);
+      nk_edit_string(ctx, NK_EDIT_SIMPLE, text[3], &text_len[3], 4, nk_filter_decimal);
+      nk_label(ctx, "Vertical Cols:", NK_TEXT_LEFT);
+      nk_edit_string(ctx, NK_EDIT_SIMPLE, text[4], &text_len[4], 4, nk_filter_decimal);
+
+      if (nk_button_label(ctx, "Generate!")) {
+        text[0][text_len[0]] = '\0';
+        // text[1][text_len[1]] = '\0';
+        text[2][text_len[2]] = '\0';
+        text[3][text_len[3]] = '\0';
+        text[4][text_len[4]] = '\0';
+
+        uint8_t from_char = 32; // atol(text[1]); should be 32 for now, because of library implementation
+        uint8_t to_char = atol(text[2]);
+        uint8_t h_cols = atol(text[3]);
+        uint8_t v_cols = atol(text[4]);
+
+        if (text_len[0] > 0 &&
+          from_char < 255 &&
+          to_char < 255 &&
+          to_char > from_char &&
+          h_cols <= 16)
+          generate_font_glyphs(text[0], from_char, to_char, h_cols, v_cols);
+      }
+      nk_label_colored(ctx, "Caution! From Char is 32 for now!", NK_TEXT_LEFT, nk_rgb(255,255,0));
+      nk_label_colored(ctx, "Caution! Maximum value for from and to is 256!", NK_TEXT_LEFT, nk_rgb(255,255,0));
+      nk_label_colored(ctx, "Caution! Maximum value for h.cols is 16!", NK_TEXT_LEFT, nk_rgb(255,255,0));
 
       nk_popup_end(ctx);
     } else {
@@ -418,13 +501,46 @@ void calculator_run(struct nk_context *ctx) {
   nk_end(ctx);
 }
 
-void load_font_glyph(char chr) {
+void generate_font_glyphs(const char *font_name, uint8_t from_char, uint8_t to_char, uint8_t w, uint8_t h) {
+  char buffer[2048] = {0};
+  snprintf(buffer, 2048, "%s_%dx%d.c", font_name, w, h);
+  FILE *fp = fopen(buffer, "a");
+  if (fp == NULL)
+  {
+    printf("cannot open file\r\n");
+    return;
+  }
+  fseek(fp, 0, SEEK_END);
+  fprintf(fp, "#include \"fonts.h\"\r\n\r\nstatic const uint16_t %s%dx%d [] = {\n", font_name, w, h);
+
+  uint8_t *pixel_buffer = malloc((w * h) + 1);
+  memset(pixel_buffer, 0, (w * h) + 1);
+
+  uint16_t *char_buffer = malloc((sizeof(uint16_t) * h) + 1);
+  memset(char_buffer, 0, (sizeof(uint16_t) * h) + 1);
+
+  for(uint8_t chr = from_char; chr < to_char; chr++)
+  {
+    load_font_glyph(chr, pixel_buffer, w, h);
+    calc_char_buffer_from_pixels(char_buffer, pixel_buffer, w, h);
+    char_buffer_string(buffer, char_buffer, w, h);
+    fprintf(fp, "\t%s\t// [%c][%d]\n", buffer, chr, chr);
+  }
+
+  fprintf(fp, "};\n");
+  fprintf(fp, "\r\nFontDef %s_%dx%d = {%d,%d,%s%dx%d};\n", font_name, w, h, w, h, font_name, w, h);
+  fclose(fp);
+
+  free(pixel_buffer);
+  free(char_buffer);
+}
+
+void load_font_glyph(char chr, uint8_t* pixel_buffer, uint8_t w, uint8_t h) {
   /* create a bitmap for the phrase */
-  memset(appState.select_state_buffer, 0, appState.col_w * appState.col_h);
-  memset(appState.char_buffer, 0, sizeof(uint16_t) * appState.col_h);
+  memset(pixel_buffer, 0, w * h);
 
   /* calculate font scaling */
-  float scale = stbtt_ScaleForPixelHeight(appState.font_info, appState.col_h);
+  float scale = stbtt_ScaleForPixelHeight(appState.font_info, h);
 
   int ascent, descent, lineGap;
   stbtt_GetFontVMetrics(appState.font_info, &ascent, &descent, &lineGap);
@@ -446,8 +562,8 @@ void load_font_glyph(char chr) {
   int y = ascent + c_y1;
 
   /* render character (stride and offset is important here) */
-  int byteOffset = roundf(lsb * scale) + (y * appState.col_w);
-  stbtt_MakeCodepointBitmap(appState.font_info, appState.select_state_buffer + byteOffset, c_x2 - c_x1, c_y2 - c_y1, appState.col_w, scale, scale, chr);
+  int byteOffset = roundf(lsb * scale) + (y * w);
+  stbtt_MakeCodepointBitmap(appState.font_info, pixel_buffer + byteOffset, c_x2 - c_x1, c_y2 - c_y1, w, scale, scale, chr);
 }
 
 void load_font_file(const char *file) {
@@ -501,12 +617,12 @@ void parse_clipboard() {
   free(buffer);
 
   if (count != appState.col_h) {
-    memset(appState.select_state_buffer, 0, appState.col_w * appState.col_h);
+    memset(appState.pixel_buffer, 0, appState.col_w * appState.col_h);
     memset(appState.char_buffer, 0, sizeof(uint16_t) * appState.col_h);
     // show error
     return;
   }
-  load_char_buffer();
+  load_char_buffer_to_pixels();
 }
 
 void write_clipboard(const char *buffer) {
@@ -528,37 +644,48 @@ void read_clipboard(char *buffer) {
   CloseClipboard();
 }
 
-void create_char_buffer() {
-  uint16_t i, j, ptr = 0;
+void char_buffer_to_clipboard() {
   char* buffer = malloc(appState.col_w * appState.col_h + 1);
   memset(buffer, 0, appState.col_w * appState.col_h + 1);
 
-  for (i = 0; i < appState.col_h; i++)
-  {
-    appState.char_buffer[i] = 0;
-    for (j = 0; j < appState.col_w; j++)
-    {
-      int bit = 15 - j;
-      if (appState.select_state_buffer[j + (i * appState.col_w)])
-      {
-        appState.char_buffer[i] |= ((uint16_t)1 << bit);
-      }
-      else
-      {
-        appState.char_buffer[i] &= ~((uint16_t)1 << bit);
-      }
-    }
-    sprintf(buffer + ptr, "0x%04X, ", appState.char_buffer[i]);
-    ptr += 8;
-  }
+  calc_char_buffer_from_pixels(appState.char_buffer, appState.pixel_buffer, appState.col_w, appState.col_h);
+  char_buffer_string(buffer, appState.char_buffer, appState.col_w, appState.col_h);
 
   write_clipboard(buffer);
   free(buffer);
 }
 
-void load_char_buffer() {
+void char_buffer_string(char *buffer, const uint16_t *char_buffer, uint8_t w, uint8_t h) {
+  uint16_t ptr = 0;
+  for (uint16_t i = 0; i < h; i++)
+  {
+    sprintf(buffer + ptr, "0x%04X, ", char_buffer[i]);
+    ptr += 8;
+  }
+}
+
+void calc_char_buffer_from_pixels(uint16_t *char_buffer, const uint8_t *pixel_buffer, uint8_t w, uint8_t h) {
+  for (int i = 0; i < h; i++)
+  {
+    char_buffer[i] = 0;
+    for (int j = 0; j < w; j++)
+    {
+      int bit = 15 - j;
+      if (pixel_buffer[j + (i * w)])
+      {
+        char_buffer[i] |= ((uint16_t)1 << bit);
+      }
+      else
+      {
+        char_buffer[i] &= ~((uint16_t)1 << bit);
+      }
+    }
+  }
+}
+
+void load_char_buffer_to_pixels() {
   uint16_t i, b, j;
-  memset(appState.select_state_buffer, 0, appState.col_w * appState.col_h);
+  memset(appState.pixel_buffer, 0, appState.col_w * appState.col_h);
   for (i = 0; i < appState.col_h; i++)
   {
     b = appState.char_buffer[i];
@@ -566,11 +693,11 @@ void load_char_buffer() {
     {
       if ((b << j) & 0x8000)
       {
-        appState.select_state_buffer[j + (i * appState.col_w)] |= 1 << (i % 8);
+        appState.pixel_buffer[j + (i * appState.col_w)] |= 1 << (i % 8);
       }
       else
       {
-        appState.select_state_buffer[j + (i * appState.col_w)] &= ~(1 << (i % 8));
+        appState.pixel_buffer[j + (i * appState.col_w)] &= ~(1 << (i % 8));
       }
     }
   }
@@ -586,21 +713,23 @@ void free_font_buffer()
   appState.font_size = 0;
   appState.font_buffer = NULL;
   appState.font_info = NULL;
+  appState.show_import_font = nk_false;
+  appState.show_generate_font = nk_false;
 }
 
 void free_buffers() {
   if (appState.char_buffer)
     free(appState.char_buffer);
-  if (appState.select_state_buffer)
-    free(appState.select_state_buffer);
+  if (appState.pixel_buffer)
+    free(appState.pixel_buffer);
 
   appState.char_buffer = NULL;
-  appState.select_state_buffer = NULL;
+  appState.pixel_buffer = NULL;
 }
 
 void create_buffers() {
-  appState.select_state_buffer = malloc(appState.col_w * appState.col_h);
-  memset(appState.select_state_buffer, 0, appState.col_w * appState.col_h);
+  appState.pixel_buffer = malloc(appState.col_w * appState.col_h);
+  memset(appState.pixel_buffer, 0, appState.col_w * appState.col_h);
 
   appState.char_buffer = malloc(sizeof(uint16_t) * appState.col_h);
   memset(appState.char_buffer, 0, sizeof(uint16_t) * appState.col_h);
