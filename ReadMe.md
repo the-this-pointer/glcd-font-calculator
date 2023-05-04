@@ -4,9 +4,8 @@
 
 ![](screenshots/Capture.PNG)
 
-This code is a simple SSD1306 font pixel calculator. I made this to use for my project <a href="https://github.com/the-this-pointer/timer-board-stm32f103" target="_blank">here</a>.
-
- You can use it for the following library also:
+This code is a simple SSD1306 font pixel calculator.
+ You can use it for the following library:
 
 <a href="https://github.com/4ilo/ssd1306-stm32HAL" target="_blank">ssd1306-stm32HAL</a>
 
@@ -41,8 +40,6 @@ If you have any questions about how cmake works (or you want to use other compil
 
 #### Usage
 
-**Remember! At this time you can edit or create a new character, also you can import an ascii character from true-type fonts! But converting a font to the array of characters still not implemented.** 
-
 Keep in mind that if you plan to work on a font with different dimensions, you can change the dimension from `Settings` menu (Located in `MENU`).
 
 You have some fonts in the `fonts.c` file of the library, that every character presented in a line there, like this:
@@ -63,10 +60,10 @@ After editing pixels when you are ready to use the character, you should press t
 ```
 This calculator just create the character for you and the rest of code such as declaring font is on yourself.
 
+See the result below, the picture belongs to one of my projects named `Universal Timer` you can find <a href="https://github.com/the-this-pointer/timer-board-stm32f103" target="_blank">here</a>:
+![LCD Image](screenshots/1683184317955_2.jpg)
 
 #### Remaining Works
-
-It doesn't support font generation based on true-type fonts yet. 
 
 These are the remaining tasks I plan to do in my spare time:
 
